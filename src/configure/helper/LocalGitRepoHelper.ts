@@ -6,6 +6,10 @@ import * as path from 'path';
 import * as Q from 'q';
 import * as vscode from 'vscode';
 import { RemoteWithoutRefs } from 'simple-git/typings/response';
+import {AzureDevOpsHelper} from './devOps/azureDevOpsHelper';
+import {GitHubProvider} from './gitHubHelper';
+import { telemetryHelper } from "./telemetryHelper";
+import { TelemetryKeys } from "../resources/telemetryKeys";
 
 export class LocalGitRepoHelper {
     private gitReference: git.SimpleGit;
@@ -21,6 +25,8 @@ export class LocalGitRepoHelper {
             return repoService;
         }
         catch(error) {
+            let gitFolderExists = fs.existsSync(path.join(repositoryPath, ".git"));
+            telemetryHelper.setTelemetry(TelemetryKeys.GitFolderExists, gitFolderExists.toString());
             throw new Error(Messages.notAGitRepository);
         }
     }
@@ -60,7 +66,21 @@ export class LocalGitRepoHelper {
     }
 
     public async getGitRemoteUrl(remoteName: string): Promise<string|void> {
-        return this.gitReference.remote(["get-url", remoteName]);
+        let remoteUrl = await this.gitReference.remote(["get-url", remoteName]);
+        if (remoteUrl) {
+            remoteUrl = (<string>remoteUrl).trim();
+            if (remoteUrl[remoteUrl.length - 1] === '/') {
+                remoteUrl = remoteUrl.substr(0, remoteUrl.length - 1);
+            }
+        }
+
+        if (AzureDevOpsHelper.isAzureReposUrl(<string>remoteUrl)) {
+            remoteUrl = AzureDevOpsHelper.getFormattedRemoteUrl(<string>remoteUrl);
+        }
+        else if (GitHubProvider.isGitHubUrl(<string>remoteUrl)) {
+            remoteUrl = GitHubProvider.getFormattedRemoteUrl(<string>remoteUrl);
+        }
+        return remoteUrl;
     }
 
     /**
@@ -96,6 +116,11 @@ export class LocalGitRepoHelper {
         }
 
         return gitLog.latest.hash;
+    }
+
+    public async getGitRootDirectory(): Promise<string> {
+        let gitRootDir = await this.gitReference.revparse(["--show-toplevel"]);
+        return path.normalize(gitRootDir.trim());
     }
 
     private static getIncreamentalFileName(fileName: string, count: number): string {

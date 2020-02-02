@@ -1,4 +1,4 @@
-import { PipelineTemplate, TargetResourceType, WizardInputs } from '../model/models';
+import { PipelineTemplate, TargetResourceType, WizardInputs, WebAppKind } from '../model/models';
 import * as fs from 'fs';
 import * as Mustache from 'mustache';
 import * as path from 'path';
@@ -13,6 +13,18 @@ export async function analyzeRepoAndListAppropriatePipeline(repoPath: string): P
     if (analysisResult.isNodeApplication) {
         // add all node application templates
         templateList = nodeTemplates.concat(templateList);
+    }
+
+    if (analysisResult.isPythonApplication) {
+        templateList = pythonTemplates.concat(templateList);
+    }
+    
+    if (analysisResult.isFunctionApplication) {
+        templateList = functionTemplates.concat(templateList);
+    }
+
+    if(analysisResult.isDotnetCoreApplication) {
+        templateList = dotnetCoreTemplates.concat(templateList);
     }
 
     // add all possible templates as we could not detect the appropriate onesı
@@ -34,11 +46,14 @@ export async function renderContent(templateFilePath: string, context: WizardInp
     return deferred.promise;
 }
 
-async function analyzeRepo(repoPath: string): Promise<{ isNodeApplication: boolean }> {
-    let deferred: Q.Deferred<{ isNodeApplication: boolean }> = Q.defer();
+async function analyzeRepo(repoPath: string): Promise<{ isNodeApplication: boolean, isFunctionApplication: boolean, isPythonApplication: boolean, isDotnetCoreApplication: boolean }> {
+    let deferred: Q.Deferred<{ isNodeApplication: boolean, isFunctionApplication: boolean, isPythonApplication: boolean, isDotnetCoreApplication: boolean }> = Q.defer();
     fs.readdir(repoPath, (err, files: string[]) => {
         let result = {
-            isNodeApplication: err ? true : isNodeRepo(files)
+            isNodeApplication: err ? true : isNodeRepo(files),
+            isFunctionApplication: err ? true : isFunctionApp(files),
+            isPythonApplication: err ? true : isPythonRepo(files),
+            isDotnetCoreApplication: err ? true : isDotnetCoreApplication(files)
             // isContainerApplication: isDockerRepo(files)
         };
         deferred.resolve(result);
@@ -48,11 +63,31 @@ async function analyzeRepo(repoPath: string): Promise<{ isNodeApplication: boole
 }
 
 function isNodeRepo(files: string[]): boolean {
-    let nodeFilesRegex = '\.ts$|\.js$|package\.json$|node_modules';
+    let nodeFilesRegex = '\\.ts$|\\.js$|package\\.json$|node_modules';
     return files.some((file) => {
         let result = new RegExp(nodeFilesRegex).test(file.toLowerCase());
         return result;
     });
+}
+
+function isFunctionApp(files: string[]): boolean {
+    return files.some((file) => {
+        return file.toLowerCase().endsWith("host.json");
+    });   
+}
+
+function isPythonRepo(files: string[]): boolean {
+    let pythonRegex = '.py$';
+    return files.some((file) => {
+        let result = new RegExp(pythonRegex).test(file.toLowerCase());
+        return result;
+    })
+}
+
+function isDotnetCoreApplication(files: string[]): boolean {
+    return files.some((file) => {
+        return file.toLowerCase().endsWith("sln") || file.toLowerCase().endsWith("csproj") || file.toLowerCase().endsWith("fsproj"); 
+    })
 }
 
 const nodeTemplates: Array<PipelineTemplate> = [
@@ -60,39 +95,103 @@ const nodeTemplates: Array<PipelineTemplate> = [
         label: 'Node.js with npm to Windows Web App',
         path: path.join(path.dirname(path.dirname(__dirname)), 'configure/templates/nodejs.yml'),
         language: 'node',
-        targetType: TargetResourceType.WindowsWebApp
+        targetType: TargetResourceType.WebApp,
+        targetKind: WebAppKind.WindowsApp
     },
     {
         label: 'Node.js with Gulp to Windows Web App',
         path: path.join(path.dirname(path.dirname(__dirname)), 'configure/templates/nodejsWithGulp.yml'),
         language: 'node',
-        targetType: TargetResourceType.WindowsWebApp
+        targetType: TargetResourceType.WebApp,
+        targetKind: WebAppKind.WindowsApp
     },
     {
         label: 'Node.js with Grunt to Windows Web App',
         path: path.join(path.dirname(path.dirname(__dirname)), 'configure/templates/nodejsWithGrunt.yml'),
         language: 'node',
-        targetType: TargetResourceType.WindowsWebApp
+        targetType: TargetResourceType.WebApp,
+        targetKind: WebAppKind.WindowsApp
     },
     {
         label: 'Node.js with Angular to Windows Web App',
         path: path.join(path.dirname(path.dirname(__dirname)), 'configure/templates/nodejsWithAngular.yml'),
         language: 'node',
-        targetType: TargetResourceType.WindowsWebApp
+        targetType: TargetResourceType.WebApp,
+        targetKind: WebAppKind.WindowsApp
     },
     {
         label: 'Node.js with Webpack to Windows Web App',
         path: path.join(path.dirname(path.dirname(__dirname)), 'configure/templates/nodejsWithWebpack.yml'),
         language: 'node',
-        targetType: TargetResourceType.WindowsWebApp
-    }    
+        targetType: TargetResourceType.WebApp,
+        targetKind: WebAppKind.WindowsApp
+    }
 ];
+
+const pythonTemplates: Array<PipelineTemplate> = [
+    {
+        label: 'Python to Linux Web App on Azure',
+        path: path.join(path.dirname(path.dirname(__dirname)), 'configure/templates/pythonLinuxWebApp.yml'),
+        language: 'python',
+        targetType: TargetResourceType.WebApp,
+        targetKind: WebAppKind.LinuxApp
+    },
+    {
+        label: 'Build and Test Python Django App',
+        path: path.join(path.dirname(path.dirname(__dirname)), 'configure/templates/pythonDjango.yml'),
+        language: 'python',
+        targetType: TargetResourceType.None,
+        targetKind: null
+    }
+];
+
+const dotnetCoreTemplates: Array<PipelineTemplate> = [
+    {
+        label: '.NET Core Web App to Windows on Azure',
+        path: path.join(path.dirname(path.dirname(__dirname)), 'configure/templates/dotnetcoreWindowsWebApp.yml'),
+        language: 'dotnetcore',
+        targetType: TargetResourceType.WebApp,
+        targetKind: WebAppKind.WindowsApp
+    },
+    {
+        label: '.NET Core Web App to Linux on Azure',
+        path: path.join(path.dirname(path.dirname(__dirname)), 'configure/templates/dotnetcoreLinuxWebApp.yml'),
+        language: 'dotnetcore',
+        targetType: TargetResourceType.WebApp,
+        targetKind: WebAppKind.LinuxApp
+    }
+]
 
 const simpleWebAppTemplates: Array<PipelineTemplate> = [
     {
         label: 'Simple application to Windows Web App',
         path: path.join(path.dirname(path.dirname(__dirname)), 'configure/templates/simpleWebApp.yml'),
         language: 'none',
-        targetType: TargetResourceType.WindowsWebApp
+        targetType: TargetResourceType.WebApp,
+        targetKind: WebAppKind.WindowsApp
     }
 ];
+
+const functionTemplates: Array<PipelineTemplate> = [
+    {
+        label: 'Python Function App to Linux Azure Function',
+        path: path.join(path.dirname(path.dirname(__dirname)), 'configure/templates/pythonLinuxFunctionApp.yml'),
+        language: 'python',
+        targetType: TargetResourceType.WebApp,
+        targetKind: WebAppKind.FunctionAppLinux
+    },
+    {
+        label: 'Node.js Function App to Linux Azure Function',
+        path: path.join(path.dirname(path.dirname(__dirname)), 'configure/templates/nodejsLinuxFunctionApp.yml'),
+        language: 'node',
+        targetType: TargetResourceType.WebApp,
+        targetKind: WebAppKind.FunctionAppLinux
+    },
+    {
+        label: '.NET Core Function App to Windows Azure Function',
+        path: path.join(path.dirname(path.dirname(__dirname)), 'configure/templates/dotnetcoreWindowsFunctionApp.yml'),
+        language: 'dotnet',
+        targetType: TargetResourceType.WebApp,
+        targetKind: WebAppKind.FunctionApp
+    },
+]
